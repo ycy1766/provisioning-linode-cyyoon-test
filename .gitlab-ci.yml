@@ -1,0 +1,31 @@
+stages:
+    - build
+
+image:
+    name: hashicorp/terraform:1.7.0
+    entrypoint:
+        - "/usr/bin/env"
+        - "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+before_script:
+    - export AWS_ACCESS_KEY=${AWS_ACCESS_KEY_ID}
+    - export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+    - export image_create_date=`date "+%Y%m%d%H%M"`_cloud_build_image
+    - echo  "variable \"linode_instance_hostname\" { default = \"$var_linode_instance_hostname\" }" >> jp-osa/variables.tf
+    - echo  "variable \"linode_build_image_label\" { default = \"$image_create_date\" }" >> jp-osa/variables.tf
+    - cat    $file_linode_stackscript_apm > modules/virtualserver/stackscript/apm.sh.tpl
+    - cat    $file_linode_stackscript_sec > modules/virtualserver/stackscript/sec.sh.tpl
+build_image:
+    stage: build
+    script:
+        - cd jp-osa/
+        - terraform init -reconfigure
+        - terraform plan -out "buildimage"
+        - terraform apply -input=true "buildimage"
+        # 생성된 이미지는 destroy 에서 제외 하기 위하여 state 에서 rm 한다.
+        - terraform state rm 'module.virtualserver.linode_image.virtualserver_instance_to_image["apm"]'
+        - terraform state rm 'module.virtualserver.linode_image.virtualserver_instance_to_image["apm_sec"]'
+        - terraform state rm 'module.virtualserver.linode_image.virtualserver_instance_to_image["none_sh"]'
+        - terraform state rm 'module.virtualserver.linode_image.virtualserver_instance_to_image["sec"]'
+        # 사용된 Resoruce 모두 삭제
+        - terraform destroy -auto-approve
